@@ -2,13 +2,36 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>🔥 Ultimate Auction System</title>
+<title>🔥 Auction System</title>
 
 <style>
-body{background:#020617;color:white;font-family:Arial;text-align:center}
-.box{background:#111827;margin:15px auto;padding:15px;width:360px;border-radius:10px}
-.card{border:2px solid gold;padding:10px;margin:10px;border-radius:10px;background:#000}
-button{margin:5px;padding:8px}
+body{
+  background:#020617;
+  color:white;
+  font-family:Arial;
+  text-align:center;
+}
+
+.box{
+  background:#111827;
+  margin:15px auto;
+  padding:15px;
+  width:360px;
+  border-radius:10px;
+}
+
+.card{
+  border:2px solid gold;
+  padding:10px;
+  margin:10px;
+  border-radius:10px;
+  background:#000;
+}
+
+button{
+  padding:8px;
+  margin:5px;
+}
 </style>
 </head>
 
@@ -47,15 +70,15 @@ button{margin:5px;padding:8px}
 <h3 id="manager"></h3>
 
 <input id="amount" placeholder="Bid">
-<button onclick="bid()">Bid</button>
+<button onclick="placeBid()">Bid</button>
 <button onclick="nextPlayer()">Next</button>
 </div>
 
-<!-- MANAGER DASHBOARD -->
+<!-- DASHBOARD -->
 <div class="box">
 <h3>My Team</h3>
 <div id="myPlayers"></div>
-<h4>Balance: <span id="balance"></span></h4>
+<h4>Balance: <span id="balance">100000</span></h4>
 </div>
 
 <!-- LEADERBOARD -->
@@ -76,213 +99,201 @@ button{margin:5px;padding:8px}
 
 <script type="module">
 
-import {initializeApp} from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
-import {getDatabase,ref,push,onValue,set,get,update} from "https://www.gstatic.com/firebasejs/12.12.0/firebase-database.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
+import { getDatabase, ref, push, onValue, set, get, update } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-database.js";
 
-const app=initializeApp({
-apiKey:"AIzaSy...",
-databaseURL:"https://auction-3f879-default-rtdb.asia-southeast1.firebasedatabase.app"
+// 🔥 YOUR FIREBASE CONFIG
+const app = initializeApp({
+  apiKey: "AIzaSy...",
+  databaseURL: "https://auction-3f879-default-rtdb.asia-southeast1.firebasedatabase.app"
 });
 
-const db=getDatabase(app);
+const db = getDatabase(app);
 
-const playerRef=ref(db,"players");
-const auctionRef=ref(db,"auction");
+const playerRef = ref(db,"players");
+const auctionRef = ref(db,"auction");
 
 // LOGIN
 let manager="";
-window.login=()=>{manager=username.value};
+window.login = ()=>{
+  manager = username.value;
+  alert("Logged in as "+manager);
+};
 
 // ADMIN
 let isAdmin=false;
-window.adminLogin=()=>{if(adminPass.value==="12345"){isAdmin=true;alert("Admin")};};
+window.adminLogin = ()=>{
+  if(adminPass.value==="12345"){
+    isAdmin=true;
+    alert("Admin OK");
+  }
+};
 
 // ADD PLAYER
-window.addPlayer=()=>{
-let file=pImage.files[0];
-let reader=new FileReader();
+window.addPlayer = ()=>{
+  let file = pImage.files[0];
+  if(!file) return alert("Upload image");
 
-reader.onload=e=>{
-push(playerRef,{
-name:pName.value,
-category:pCategory.value,
-price:Number(pPrice.value),
-facebook:pFacebook.value,
-img:e.target.result,
-approved:false
-});
-};
-reader.readAsDataURL(file);
-};
+  let reader = new FileReader();
 
-// APPROVE
-window.approve=id=>{
-update(ref(db,"players/"+id),{approved:true});
+  reader.onload = e=>{
+    push(playerRef,{
+      name:pName.value,
+      category:pCategory.value,
+      price:Number(pPrice.value),
+      facebook:pFacebook.value,
+      img:e.target.result,
+      approved:true
+    });
+  };
+
+  reader.readAsDataURL(file);
 };
 
 // LOAD PLAYERS
 let players=[];
 
-onValue(playerRef,snap=>{
-players=[];
-snap.forEach(c=>{
-let d=c.val();
-if(d.approved) players.push({...d,id:c.key});
-});
+onValue(playerRef,(snap)=>{
+  players=[];
+  snap.forEach(c=>{
+    let d=c.val();
+    if(d.approved) players.push({...d,id:c.key});
+  });
 });
 
-// AUCTION
+// NEXT PLAYER
 let index=0;
 
-window.nextPlayer=()=>{
-let p=players[index];
+window.nextPlayer = ()=>{
+  if(players.length===0){
+    alert("No players!");
+    return;
+  }
 
-set(auctionRef,{
-name:p.name,
-img:p.img,
-amount:0,
-manager:""
-});
+  let p = players[index];
 
-index=(index+1)%players.length;
+  if(!p){
+    alert("Player not ready");
+    return;
+  }
+
+  set(auctionRef,{
+    name:p.name,
+    img:p.img,
+    amount:0,
+    manager:""
+  });
+
+  index = (index+1)%players.length;
 };
 
-// LIVE
-onValue(auctionRef,snap=>{
-let d=snap.val();
-if(!d)return;
+// LIVE UPDATE
+onValue(auctionRef,(snap)=>{
+  let d = snap.val();
+  if(!d) return;
 
-playerName.innerText=d.name;
-playerImg.src=d.img;
-bid.innerText=d.amount;
-manager.innerText=d.manager;
+  playerName.innerText = d.name || "Waiting...";
+  playerImg.src = d.img || "https://via.placeholder.com/120";
+  bid.innerText = d.amount || 0;
+  manager.innerText = d.manager || "";
 });
 
 // BID
-window.bid=async()=>{
-let amt=Number(amount.value);
-let snap=await get(auctionRef);
-let current=snap.val()?.amount||0;
+window.placeBid = async ()=>{
+  if(!manager) return alert("Login first");
 
-if(amt>current){
+  let amt = Number(amount.value);
 
-set(auctionRef,{
-...snap.val(),
-amount:amt,
-manager:manager
-});
+  let snap = await get(auctionRef);
+  let current = snap.val()?.amount || 0;
 
-// SAVE TEAM DATA
-push(ref(db,"teams/"+manager),{
-player:snap.val().name,
-price:amt
-});
+  if(amt>current){
 
-}
+    set(auctionRef,{
+      ...snap.val(),
+      amount:amt,
+      manager:manager
+    });
+
+    push(ref(db,"teams/"+manager),{
+      player:snap.val().name,
+      price:amt
+    });
+
+  }else{
+    alert("Higher bid needed");
+  }
 };
 
-// MANAGER DASHBOARD
+// DASHBOARD
 onValue(ref(db,"teams/"+manager),(snap)=>{
-let html="",total=0;
+  let html="",total=0;
 
-snap.forEach(c=>{
-let d=c.val();
-total+=d.price;
-html+=`<div>${d.player} → ${d.price}</div>`;
-});
+  if(!snap.exists()){
+    myPlayers.innerHTML="No players yet";
+    balance.innerText=100000;
+    return;
+  }
 
-myPlayers.innerHTML=html;
-balance.innerText=100000-total;
+  snap.forEach(c=>{
+    let d=c.val();
+    total+=d.price;
+    html+=`<div>${d.player} → ${d.price}</div>`;
+  });
+
+  myPlayers.innerHTML=html;
+  balance.innerText=100000-total;
 });
 
 // LEADERBOARD
-onValue(ref(db,"teams"),snap=>{
-let arr=[];
+onValue(ref(db,"teams"),(snap)=>{
+  let arr=[];
 
-snap.forEach(team=>{
-let total=0;
-team.forEach(p=>{total+=p.val().price});
-arr.push({team:team.key,total});
-});
+  snap.forEach(team=>{
+    let total=0;
+    team.forEach(p=> total+=p.val().price);
+    arr.push({team:team.key,total});
+  });
 
-arr.sort((a,b)=>b.total-a.total);
+  arr.sort((a,b)=>b.total-a.total);
 
-leaderboard.innerHTML=arr.map((t,i)=>`#${i+1} ${t.team} ${t.total}`).join("");
+  leaderboard.innerHTML = arr.map((t,i)=>`#${i+1} ${t.team} → ${t.total}`).join("");
 });
 
 // SQUADS
-onValue(ref(db,"teams"),snap=>{
-let html="";
+onValue(ref(db,"teams"),(snap)=>{
+  let html="";
 
-snap.forEach(team=>{
-html+=`<h4>${team.key}</h4>`;
-team.forEach(p=>{
-html+=`<div>${p.val().player}</div>`;
-});
-});
+  snap.forEach(team=>{
+    html+=`<h4>${team.key}</h4>`;
+    team.forEach(p=>{
+      html+=`<div>${p.val().player}</div>`;
+    });
+  });
 
-squads.innerHTML=html;
+  squads.innerHTML=html;
 });
 
 // PDF
-window.exportPDF=()=>{
-const {jsPDF}=window.jspdf;
-let doc=new jsPDF();
-doc.text("Auction Result",10,10);
+window.exportPDF = ()=>{
+  const { jsPDF } = window.jspdf;
+  let doc = new jsPDF();
 
-let y=20;
-document.querySelectorAll("#squads div").forEach(e=>{
-doc.text(e.innerText,10,y);
-y+=10;
-});
+  doc.text("Auction Result",10,10);
 
-doc.save("auction.pdf");
+  let y=20;
+  document.querySelectorAll("#squads div").forEach(e=>{
+    doc.text(e.innerText,10,y);
+    y+=10;
+  });
+
+  doc.save("auction.pdf");
 };
 
 </script>
 
 </body>
-</html>"){
-    teamBudgets[t]-=Number(bid.innerText);
-  }
-  winner.innerText="🏆 SOLD to "+t;
-}
-
-// Dashboard
-function updateDashboard(){
-  let html="";
-  for(let t in teamBudgets){
-    html+=`<div>${t} → ${teamBudgets[t]}</div>`;
-  }
-  teams.innerHTML=html;
-}
-
-// Live update
-onValue(bidRef,(snap)=>{
-  let d=snap.val();
-  if(!d)return;
-
-  bid.innerText=d.amount;
-  team.innerText=d.team;
-  manager.innerText=d.manager;
-
-  budget.innerText=teamBudgets[d.team]||0;
-
-  log.innerHTML+=`<div>${d.manager} (${d.team}) → ${d.amount}</div>`;
-  log.scrollTop=log.scrollHeight;
-
-  bid.classList.add("highlight");
-  setTimeout(()=>bid.classList.remove("highlight"),1000);
-
-  document.getElementById("sound").play();
-
-  updateDashboard();
-});
-
-// Bid
-window.placeBid=async function(){
-
-  if(!isManager) return alert("Login first");
+</html>
 
   let amt=Number(amount.value);
   let snap=await get(bidRef);
