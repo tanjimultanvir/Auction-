@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>🔥 Auction System</title>
+
+<style>
+body{
+  background:#020617;
+  color:white;
+  font-family:Arial;
+  text-align:center;
+}
+
+.box{
+  background:#111827;
+  margin:15px auto;
+  padding:15px;
+  width:360px;
+  border-radius:10px;
+}
+
+.card{
+  border:2px solid gold;
+  padding:10px;
+  margin:10px;
+  border-radius:10px;
+  background:#000;
+}
+
+button{
+  padding:8px;
+  margin:5px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🔥 AUCTION SYSTEM</h1>
+
+<!-- LOGIN -->
+<div class="box">
+<input id="username" placeholder="Manager Name">
+<button onclick="login()">Login</button>
+</div>
+
+<!-- PLAYER FORM -->
+<div class="box">
+<h3>Add Player</h3>
+<input id="pName" placeholder="Name">
+<input id="pCategory" placeholder="Category">
+<input id="pPrice" placeholder="Price">
+<input id="pFacebook" placeholder="Facebook Link">
+<input type="file" id="pImage">
+<button onclick="addPlayer()">Submit</button>
+</div>
+
+<!-- ADMIN -->
+<div class="box">
+<input id="adminPass" placeholder="Admin Pass">
+<button onclick="adminLogin()">Admin Login</button>
+</div>
+
+<!-- AUCTION -->
+<div class="box">
+<h2 id="playerName">Waiting...</h2>
+<img id="playerImg" width="120">
+<h3>💰 <span id="bid">0</span></h3>
+<h3 id="manager"></h3>
+
+<input id="amount" placeholder="Bid">
+<button onclick="placeBid()">Bid</button>
+<button onclick="nextPlayer()">Next</button>
+</div>
+
+<!-- DASHBOARD -->
+<div class="box">
+<h3>My Team</h3>
+<div id="myPlayers"></div>
+<h4>Balance: <span id="balance">100000</span></h4>
+</div>
+
+<!-- LEADERBOARD -->
+<div class="box">
+<h3>Leaderboard</h3>
+<div id="leaderboard"></div>
+</div>
+
+<!-- SQUADS -->
+<div class="box">
+<h3>Final Squads</h3>
+<div id="squads"></div>
+</div>
+
+<button onclick="exportPDF()">Export PDF</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
+import { getDatabase, ref, push, onValue, set, get, update } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-database.js";
+
+// 🔥 YOUR FIREBASE CONFIG
+const app = initializeApp({
+  apiKey: "AIzaSy...",
+  databaseURL: "https://auction-3f879-default-rtdb.asia-southeast1.firebasedatabase.app"
+});
+
+const db = getDatabase(app);
+
+const playerRef = ref(db,"players");
+const auctionRef = ref(db,"auction");
+
+// LOGIN
+let manager="";
+window.login = ()=>{
+  manager = username.value;
+  alert("Logged in as "+manager);
+};
+
+// ADMIN
+let isAdmin=false;
+window.adminLogin = ()=>{
+  if(adminPass.value==="12345"){
+    isAdmin=true;
+    alert("Admin OK");
+  }
+};
+
+// ADD PLAYER
+window.addPlayer = ()=>{
+  let file = pImage.files[0];
+  if(!file) return alert("Upload image");
+
+  let reader = new FileReader();
+
+  reader.onload = e=>{
+    push(playerRef,{
+      name:pName.value,
+      category:pCategory.value,
+      price:Number(pPrice.value),
+      facebook:pFacebook.value,
+      img:e.target.result,
+      approved:true
+    });
+  };
+
+  reader.readAsDataURL(file);
+};
+
+// LOAD PLAYERS
+let players=[];
+
+onValue(playerRef,(snap)=>{
+  players=[];
+  snap.forEach(c=>{
+    let d=c.val();
+    if(d.approved) players.push({...d,id:c.key});
+  });
+});
+
+// NEXT PLAYER
+let index=0;
+
+window.nextPlayer = ()=>{
+  if(players.length===0){
+    alert("No players!");
+    return;
+  }
+
+  let p = players[index];
+
+  if(!p){
+    alert("Player not ready");
+    return;
+  }
+
+  set(auctionRef,{
+    name:p.name,
+    img:p.img,
+    amount:0,
+    manager:""
+  });
+
+  index = (index+1)%players.length;
+};
+
+// LIVE UPDATE
+onValue(auctionRef,(snap)=>{
+  let d = snap.val();
+  if(!d) return;
+
+  playerName.innerText = d.name || "Waiting...";
+  playerImg.src = d.img || "https://via.placeholder.com/120";
+  bid.innerText = d.amount || 0;
+  manager.innerText = d.manager || "";
+});
+
+// BID
+window.placeBid = async ()=>{
+  if(!manager) return alert("Login first");
+
+  let amt = Number(amount.value);
+
+  let snap = await get(auctionRef);
+  let current = snap.val()?.amount || 0;
+
+  if(amt>current){
+
+    set(auctionRef,{
+      ...snap.val(),
+      amount:amt,
+      manager:manager
+    });
+
+    push(ref(db,"teams/"+manager),{
+      player:snap.val().name,
+      price:amt
+    });
+
+  }else{
+    alert("Higher bid needed");
+  }
+};
+
+// DASHBOARD
+onValue(ref(db,"teams/"+manager),(snap)=>{
+  let html="",total=0;
+
+  if(!snap.exists()){
+    myPlayers.innerHTML="No players yet";
+    balance.innerText=100000;
+    return;
+  }
+
+  snap.forEach(c=>{
+    let d=c.val();
+    total+=d.price;
+    html+=`<div>${d.player} → ${d.price}</div>`;
+  });
+
+  myPlayers.innerHTML=html;
+  balance.innerText=100000-total;
+});
+
+// LEADERBOARD
+onValue(ref(db,"teams"),(snap)=>{
+  let arr=[];
+
+  snap.forEach(team=>{
+    let total=0;
+    team.forEach(p=> total+=p.val().price);
+    arr.push({team:team.key,total});
+  });
+
+  arr.sort((a,b)=>b.total-a.total);
+
+  leaderboard.innerHTML = arr.map((t,i)=>`#${i+1} ${t.team} → ${t.total}`).join("");
+});
+
+// SQUADS
+onValue(ref(db,"teams"),(snap)=>{
+  let html="";
+
+  snap.forEach(team=>{
+    html+=`<h4>${team.key}</h4>`;
+    team.forEach(p=>{
+      html+=`<div>${p.val().player}</div>`;
+    });
+  });
+
+  squads.innerHTML=html;
+});
+
+// PDF
+window.exportPDF = ()=>{
+  const { jsPDF } = window.jspdf;
+  let doc = new jsPDF();
+
+  doc.text("Auction Result",10,10);
+
+  let y=20;
+  document.querySelectorAll("#squads div").forEach(e=>{
+    doc.text(e.innerText,10,y);
+    y+=10;
+  });
+
+  doc.save("auction.pdf");
+};
+
+</script>
+
+</body>
+</html>
+
+ 
